@@ -51,7 +51,7 @@ checkout of this repository with Sustenaut/shared-infra and Sustenaut/auth check
 on a machine on the admin tailnet, signed in to `gh` and `gcloud`:
 
 ```sh
-./with-secrets ./pubkit deploy walk --fulfil --server sustenaut --zones ../shared-infra/pubkit.json
+./with-secrets ./pubdeploy walk --fulfil --server sustenaut --zones ../shared-infra/pubkit.json
 ```
 
 It checks every need, prints the plan, and waits for a typed `yes`; then it makes each missing
@@ -86,8 +86,8 @@ Some needs it only checks, and says what a person does:
 - **The two heads** the pod loads from (above), and storage letting `k8s:review/app` read
   `publications` and `sources` (Sustenaut/storage's `tenants.json`).
 
-`./pubkit deploy walk` without `--fulfil` (or `deploy check`) changes nothing, and
-`./pubkit deploy walk --offline` checks only the files. `.github/workflows/deploy-check.yml` walks
+`./pubdeploy walk` without `--fulfil` (or `pubdeploy check`) changes nothing, and
+`./pubdeploy walk --offline` checks only the files. `.github/workflows/deploy-check.yml` walks
 the deployment every 30 minutes, read-only, with the deploy key, and writes the walk to storage's
 `plane` tenant; it fails when a need is missing, drift or blocked.
 
