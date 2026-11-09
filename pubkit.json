@@ -1,0 +1,108 @@
+{
+  "kind": "service",
+  "ci": {
+    "with": {
+      "setup": "python -m pip install --quiet uv==0.12.18 && uv venv -q .venv && uv pip install -q --python .venv --require-hashes -r tests/requirements.lock",
+      "test": ".venv/bin/python -m pytest -q tests",
+      "shellcheck": "with-secrets"
+    }
+  },
+  "protect": {
+    "checks": [
+      "ci / passed",
+      "integrations / scan"
+    ],
+    "tags": false
+  },
+  "secrets": [
+    {
+      "from": "sustenaut-deploy-ssh-key",
+      "to": "SUSTENAUT_DEPLOY_SSH_KEY",
+      "kind": "secret"
+    },
+    {
+      "from": "TS_GH_OAUTH_CLIENT_ID",
+      "to": "TS_GH_OAUTH_CLIENT_ID",
+      "kind": "secret"
+    },
+    {
+      "from": "TS_GH_OAUTH_SECRET",
+      "to": "TS_GH_OAUTH_SECRET",
+      "kind": "secret"
+    },
+    {
+      "from": "sustenaut-server",
+      "to": "SUSTENAUT_SERVER",
+      "kind": "variable"
+    },
+    {
+      "from": "sustenaut-known-hosts",
+      "to": "SUSTENAUT_KNOWN_HOSTS",
+      "kind": "variable"
+    }
+  ],
+  "deploy": {
+    "namespace": "review",
+    "host": "review.sustenaut.eu",
+    "workflow": "deploy.yml",
+    "gate": "DEPLOY_REVIEW",
+    "needs": [
+      {
+        "type": "gcp.service-account-key",
+        "account": "sustenaut-review-site",
+        "project": "sustenaut",
+        "bitwarden": "review-site-key",
+        "secret": {
+          "name": "review-secrets",
+          "key": "review-site-key",
+          "decode": "base64"
+        }
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "auth-review-client-secret",
+        "secret": {
+          "name": "review-secrets",
+          "key": "keycloak-client-secret"
+        }
+      },
+      {
+        "type": "bitwarden.secret",
+        "name": "review-session-secret",
+        "secret": {
+          "name": "review-secrets",
+          "key": "session-secret"
+        }
+      },
+      {
+        "type": "bitwarden.generated",
+        "name": "review-cookie-secret",
+        "shape": "oauth2-proxy-cookie",
+        "secret": {
+          "name": "review-cookie",
+          "key": "cookie-secret"
+        }
+      },
+      {
+        "type": "auth.sign-in-client",
+        "realm": "team",
+        "role": "review",
+        "auth": "https://auth.sustenaut.eu/realms/team",
+        "domain": "sustenaut.eu",
+        "host": "review.sustenaut.eu",
+        "state": "/root/.config/sustenaut-auth/team-sustenaut.eu",
+        "client_name": "sustenaut.eu team sites",
+        "register_app": "../auth/register-app.py",
+        "approvals": "../shared-infra/infra/auth-approvals.json",
+        "access": "https://auth.sustenaut.eu/realms/team/access",
+        "secret": {
+          "name": "review-oidc"
+        }
+      },
+      {
+        "type": "k8s.manifests",
+        "path": "k8s/admin/network-policy.yaml"
+      }
+    ]
+  }
+}

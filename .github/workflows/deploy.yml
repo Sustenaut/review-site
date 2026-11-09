@@ -1,0 +1,40 @@
+# Build and deploy the review service (review.sustenaut.eu) once CI passes on a merge to main,
+# or by hand, with pubkit's k8s-deploy.yml (pubkit's README, "Deploying a service to k3s"). The
+# image goes to GitHub's container registry as ghcr.io/sustenaut/review, public (not
+# ghcr.io/sustenaut/review-site: that is Sustenaut/business-plan's old package, private, whose
+# images hold the data), and holds Sustenaut/review-tooling's
+# review-site/ at the release the Dockerfile pins, pub and load.py: no key, no token and no data.
+# Publication 0 and the paper extracts are private, and the pod loads them from storage when it
+# starts (load.py). Then k8s/, rendered with that image, goes to the Sustenaut k3s server over SSH
+# and the tailnet, where the deploy key can only run sustenaut-deploy: apply in namespace review
+# and wait, once DEPLOY_REVIEW is on, which the deploy walk sets once every need before it is
+# ready.
+#
+# Without SUSTENAUT_SERVER the image is built and pushed, and nothing is deployed.
+name: deploy
+
+on:
+  # Once CI (main.yml) has passed on a merge to main, never beside it; k8s-deploy's
+  # ready job also waits for the integrations check on that commit.
+  workflow_run: { workflows: [main], types: [completed], branches: [main] }
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    uses: Sustenaut/pubkit/.github/workflows/k8s-deploy.yml@01c2711869ce046ec875edee83e575b955cfbabf # v0.31.3
+    with:
+      image: ghcr.io/sustenaut/review
+      deploys: |
+        k8s review DEPLOY_REVIEW
+      # The image must start as its own user, import the service and the loader, hold pub,
+      # and hold no data: its bundles directory is empty until the pod's load container fills it.
+      check: |
+        docker run --rm "$IMAGE" sh -c 'test "$(id -u)" = 1000 && "$PUB" --version >/dev/null && test -z "$(ls -A "$REVIEW_BUNDLES")" && python -c "
+        import load, review.main
+        "'
+    secrets: inherit

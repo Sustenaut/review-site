@@ -1,0 +1,19 @@
+# The review service on the Sustenaut k3s server (shared-infra's infra/hetzner.tf), namespace
+# review: the app (../Dockerfile, behind the access check), oauth2-proxy in front of it and the
+# ingress for review.sustenaut.eu. The same shape as Sustenaut/notebooks' k8s/.
+# Rendered by .github/workflows/deploy.yml (pubkit's k8s-deploy.yml) with the image it just built
+# (kustomize edit set image) and applied by sustenaut-deploy on the server.
+# Not here (the deploy identity may not manage them): the Secrets review-secrets, review-cookie
+# and review-oidc (the sign-in client), and the network policy in admin/. pubkit.json's deploy
+# block lists them, and the deploy walk makes them (README.md, "Deploying").
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: review
+resources:
+  - service-accounts.yaml
+  - app.yaml
+  - oauth2-proxy.yaml
+  - ingress.yaml
+images:
+  - name: ghcr.io/sustenaut/review
+    newTag: unset

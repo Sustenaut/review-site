@@ -1,0 +1,148 @@
+# The review service (Sustenaut/review-tooling's review-site/, ../Dockerfile). Its load container
+# fetches publication 0 and the paper extracts from storage as k8s:review/app when the pod starts
+# (../load.py) and bundles them into the volume the app reads: the image holds no data. REVIEW_LOGIN=team+wallet: it trusts the email and access token
+# oauth2-proxy puts in X-Forwarded-Email and X-Forwarded-Access-Token, so nothing but the proxy
+# may reach it: no ingress points here, and admin/network-policy.yaml lets in only the proxy's
+# pods. On each request it asks whether the person still has the role review (review/access_check.py);
+# inside that, the wallet sign-in (realm sustenaut, client review) is offered.
+# It writes to the reviews and review-keys buckets and Firestore as sustenaut-review-site
+# (Sustenaut/business-plan's infra/review-site.tf), with the key the deploy walk puts in the Secret
+# review-secrets.
+apiVersion: v1
+kind: Service
+metadata:
+  name: app
+spec:
+  selector:
+    app: review
+  ports:
+    - name: http
+      port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: review
+  template:
+    metadata:
+      labels:
+        app: review
+    spec:
+      serviceAccountName: app # service-accounts.yaml: no RBAC, no API token
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      initContainers:
+        - name: load
+          image: ghcr.io/sustenaut/review
+          command: [python, load.py]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: bundles
+              mountPath: /app/bundles
+            - name: storage-token
+              mountPath: /var/run/secrets/storage
+              readOnly: true
+      containers:
+        - name: app
+          image: ghcr.io/sustenaut/review
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: REVIEW_LOGIN
+              value: team+wallet
+            - name: REVIEW_PUBLIC_URL
+              value: https://review.sustenaut.eu
+            # The sign-in client, to read the access state's hash (review/access_check.py).
+            - name: ACCESS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: review-oidc
+                  key: client-id
+            - name: ACCESS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: review-oidc
+                  key: client-secret
+            - name: REVIEW_BUCKET
+              value: sustenaut-reviews
+            - name: REVIEW_KEYS_BUCKET
+              value: sustenaut-review-keys
+            - name: GOOGLE_CLOUD_PROJECT
+              value: sustenaut
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/run/secrets/google/review-site.json
+            # The wallet sign-in, offered inside the team sign-in until wallets are issued.
+            - name: KEYCLOAK_ISSUER
+              value: https://auth.sustenaut.eu/realms/sustenaut
+            - name: KEYCLOAK_CLIENT_ID
+              value: review
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: review-secrets
+                  key: keycloak-client-secret
+            - name: REVIEW_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: review-secrets
+                  key: session-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: bundles
+              mountPath: /app/bundles
+              readOnly: true
+            - name: google-key
+              mountPath: /var/run/secrets/google
+              readOnly: true
+      volumes:
+        # What the load container bundles, for this pod's life: a new pod loads afresh, so a
+        # moved head shows after kubectl -n review rollout restart deployment/app.
+        - name: bundles
+          emptyDir: {}
+        # Storage's private tenants take this token, for k8s:review/app (tenants.json).
+        - name: storage-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: storage.sustenaut.eu
+                  expirationSeconds: 600
+                  path: token
+        - name: google-key
+          secret:
+            secretName: review-secrets
+            items:
+              - key: review-site-key
+                path: review-site.json
+            defaultMode: 0400

@@ -1,0 +1,4 @@
+# Local secrets, such as the Bitwarden token ./with-secrets reads: never committed.
+.env
+.venv/
+__pycache__/
