@@ -9,9 +9,12 @@ import tarfile
 from pathlib import Path
 
 import pytest
+from pytest_bdd import parsers, scenarios, then, when
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import load  # noqa: E402
+
+scenarios("load.feature")
 
 TOKEN = "pod-token"
 SRC = "https://storage.sustenaut.eu/sources/f/"
@@ -35,7 +38,8 @@ def storage(answers: dict[str, bytes], asked: list[str]):
     return fetch
 
 
-def test_it_loads_both_heads_into_one_directory_and_bundles_it(tmp_path):
+@then("it loads both heads into one directory and bundles it")
+def it_loads_both_heads_into_one_directory_and_bundles_it(tmp_path):
     asked: list[str] = []
     answers = {
         load.PUBLICATION: tarball({"objects/a.cbor": b"A", "objects/b.cbor": b"B", "README": b"x"}),
@@ -54,35 +58,45 @@ def test_it_loads_both_heads_into_one_directory_and_bundles_it(tmp_path):
     assert asked[:2] == [load.PUBLICATION, load.GATHERED]
 
 
-def test_a_tarball_entry_outside_objects_is_left_out(tmp_path):
+@then("a tarball entry outside objects is left out")
+def a_tarball_entry_outside_objects_is_left_out(tmp_path):
     data = tarball({"objects/a.cbor": b"A", "../evil.cbor": b"X", "objects/sub/c.cbor": b"C"})
     assert load.objects(data, tmp_path) == 1
     assert [p.name for p in tmp_path.iterdir()] == ["a.cbor"]
 
 
-def test_an_empty_publication_stops_the_pod(tmp_path):
+@then("an empty publication stops the pod")
+def an_empty_publication_stops_the_pod(tmp_path):
     answers = {load.PUBLICATION: tarball({}), load.GATHERED: b"{}"}
     with pytest.raises(load.LoadError, match="no objects"):
         load.load(tmp_path / "b", TOKEN, storage(answers, []), lambda *_: None)
 
 
-@pytest.mark.parametrize("name, url, why", [
-    ("../e.cbor", SRC + "x/e.cbor", "not a file name"),
-    ("e.cbor", None, "not uploaded"),
-    ("e.cbor", "https://elsewhere.example/sources/f/x/e.cbor", "outside the sources tenant"),
-    ("e.cbor", "https://storage.sustenaut.eu/publications/f/x/e.cbor", "outside the sources tenant"),
-])
-def test_the_index_may_name_only_files_in_the_sources_tenant(tmp_path, name, url, why):
-    with pytest.raises(load.LoadError, match=why):
-        load.extracts({"objects": {name: url}}, TOKEN, tmp_path, storage({}, []))
+URLS = {"none": None, "in the sources tenant": SRC + "x/e.cbor",
+        "on another host": "https://elsewhere.example/sources/f/x/e.cbor",
+        "in the publications tenant": "https://storage.sustenaut.eu/publications/f/x/e.cbor"}
 
 
-def test_the_token_goes_only_to_storage():
+@when(parsers.parse('the index names "{name}" at the URL {where}'), target_fixture="refused")
+def index_names(tmp_path, name, where):
+    with pytest.raises(load.LoadError) as refused:
+        load.extracts({"objects": {name: URLS[where]}}, TOKEN, tmp_path, storage({}, []))
+    return refused.value
+
+
+@then(parsers.parse('the load refuses it as "{why}"'))
+def load_refuses(refused, why):
+    assert why in str(refused)
+
+
+@then("the token goes only to storage")
+def the_token_goes_only_to_storage():
     with pytest.raises(load.LoadError, match="goes nowhere else"):
         load.get("https://elsewhere.example/x", TOKEN, opener=lambda *a, **k: pytest.fail("fetched"))
 
 
-def test_without_a_token_it_says_where_it_looked(tmp_path, monkeypatch, capsys):
+@then("without a token it says where it looked")
+def without_a_token_it_says_where_it_looked(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(load, "TOKEN", tmp_path / "missing")
     assert load.main() == 1
     assert "no storage token at" in capsys.readouterr().err
