@@ -6,8 +6,8 @@
 # pods. On each request it asks whether the person still has the role review (review/access_check.py);
 # inside that, the wallet sign-in (realm sustenaut, client review) is offered.
 # It writes to the reviews and review-keys buckets and Firestore as sustenaut-review-site
-# (Sustenaut/business-plan's infra/review-site.tf), with the key the deploy walk puts in the Secret
-# review-secrets.
+# (Sustenaut/business-plan's infra/review-site.tf) with no key: the pod's projected token through
+# Workload Identity (google-credential.yaml), which google-auth reads.
 apiVersion: v1
 kind: Service
 metadata:
@@ -88,7 +88,7 @@ spec:
             - name: GOOGLE_CLOUD_PROJECT
               value: sustenaut
             - name: GOOGLE_APPLICATION_CREDENTIALS
-              value: /var/run/secrets/google/review-site.json
+              value: /etc/google/credential.json
             # The wallet sign-in, offered inside the team sign-in until wallets are issued.
             - name: KEYCLOAK_ISSUER
               value: https://auth.sustenaut.eu/realms/sustenaut
@@ -123,8 +123,11 @@ spec:
             - name: bundles
               mountPath: /app/bundles
               readOnly: true
-            - name: google-key
+            - name: google-token
               mountPath: /var/run/secrets/google
+              readOnly: true
+            - name: google-credential
+              mountPath: /etc/google
               readOnly: true
       volumes:
         # What the load container bundles, for this pod's life: a new pod loads afresh, so a
@@ -139,10 +142,13 @@ spec:
                   audience: storage.sustenaut.eu
                   expirationSeconds: 600
                   path: token
-        - name: google-key
-          secret:
-            secretName: review-secrets
-            items:
-              - key: review-site-key
-                path: review-site.json
-            defaultMode: 0400
+        - name: google-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: "//iam.googleapis.com/projects/948171295184/locations/global/workloadIdentityPools/services/providers/sustenaut-k3s"
+                  path: token
+                  expirationSeconds: 3600
+        - name: google-credential
+          configMap:
+            name: google-credential

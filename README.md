@@ -61,7 +61,7 @@ again: what is ready is left alone. In order:
 | Need | What the walk does |
 |---|---|
 | the namespace `review` | the server's `sustenaut-app`, which makes it and its deploy identity |
-| `gcp.service-account-key` `review-site-key` | the key for `sustenaut-review-site` (Sustenaut/business-plan's `infra/review-site.tf`): made and written to Bitwarden when it is missing or not one of the account's live keys |
+| `gcp.workload-identity` `app` | that the app's ServiceAccount may act as `sustenaut-review-site` (Sustenaut/business-plan's `infra/review-site.tf`) through the `services` Workload Identity pool, so it reaches Cloud Storage and Firestore with no key (`k8s/google-credential.yaml`); the grant is Terraform's (shared-infra's `infra/services-identity.tf`) and only proposed |
 | `bitwarden.secret` `auth-review-client-secret`, `review-session-secret` | the wallet sign-in's client secret (realm `sustenaut`, client `review`) and the key its session cookies are signed with: checked in Bitwarden, where a person puts them |
 | the Secret `review-secrets` | made from those three; the app restarted |
 | `bitwarden.generated` `review-cookie-secret` | oauth2-proxy's cookie secret: a new one of its shape, written to Bitwarden, when it is missing or misshapen |
