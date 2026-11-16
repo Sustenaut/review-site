@@ -15,14 +15,6 @@
       "mode": "required"
     },
     {
-      "plugin": "sonarcloud.scan",
-      "paths": [
-        ".github/workflows/main.yml",
-        ".github/workflows/pr.yml"
-      ],
-      "mode": "required"
-    },
-    {
       "plugin": "github.ghcr",
       "paths": [
         ".github/workflows/deploy.yml",
@@ -32,9 +24,24 @@
       "mode": "required"
     },
     {
+      "plugin": "google.cloud",
+      "paths": [
+        "k8s/google-credential.yaml"
+      ],
+      "mode": "required"
+    },
+    {
       "plugin": "letsencrypt.certs",
       "paths": [
         "k8s/ingress.yaml"
+      ],
+      "mode": "required"
+    },
+    {
+      "plugin": "sonarcloud.scan",
+      "paths": [
+        ".github/workflows/main.yml",
+        ".github/workflows/pr.yml"
       ],
       "mode": "required"
     },
