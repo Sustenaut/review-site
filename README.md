@@ -63,7 +63,7 @@ again: what is ready is left alone. In order:
 | the namespace `review` | the server's `sustenaut-app`, which makes it and its deploy identity |
 | `gcp.workload-identity` `app` | that the app's ServiceAccount may act as `sustenaut-review-site` (Sustenaut/business-plan's `infra/review-site.tf`) through the `services` Workload Identity pool, so it reaches Cloud Storage and Firestore with no key (`k8s/google-credential.yaml`); the grant is Terraform's (shared-infra's `infra/services-identity.tf`) and only proposed |
 | `bitwarden.secret` `auth-review-client-secret`, `review-session-secret` | the wallet sign-in's client secret (realm `sustenaut`, client `review`) and the key its session cookies are signed with: checked in Bitwarden, where a person puts them |
-| the Secret `review-secrets` | made from those three; the app restarted |
+| the Secret `review-secrets` | made from those two; the app restarted |
 | `bitwarden.generated` `review-cookie-secret` | oauth2-proxy's cookie secret: a new one of its shape, written to Bitwarden, when it is missing or misshapen |
 | the Secret `review-cookie` | made from it; oauth2-proxy restarted |
 | `auth.sign-in-client` | sustenaut.eu's team-site client in the team realm, role `review`: the approval record written into shared-infra's `infra/auth-approvals.json` when auth.sustenaut.eu wants one, and once the client is issued, the Secret `review-oidc` made from it on the server |
