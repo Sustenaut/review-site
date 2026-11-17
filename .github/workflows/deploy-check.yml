@@ -4,7 +4,7 @@ on: { schedule: [{ cron: '*/30 * * * *' }], workflow_dispatch: {} }
 permissions: { actions: read, contents: read, id-token: write }
 jobs:
   check:
-    uses: Sustenaut/pubdeploy/.github/workflows/deploy-check.yml@9d13c3fca915b386742565895d67d9a831492cfa # v0.4.1
+    uses: Sustenaut/pubdeploy/.github/workflows/deploy-check.yml@4d44dcdf46f86da3ed459d2ee34afc72ebe6ddb1 # v0.4.4
     # The journal goes to storage's plane tenant. The zones are shared-infra's, which the
     # job can't check out, so the DNS record stays unknown there.
     with: { journal: 'https://storage.sustenaut.eu' }
