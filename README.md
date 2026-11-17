@@ -14,7 +14,7 @@ login `team+wallet`). This repository is what deploys it.
 | `load.py` | Run by the pod's load container: fetches publication 0 and the paper extracts from storage and bundles them for the app |
 | `k8s/` | The app, oauth2-proxy (team realm, `--allowed-group=review`) and the ingress; `admin/` the network policy |
 | `.github/workflows/deploy.yml` | On each merge, once CI passes: build, check, push and, once `DEPLOY_REVIEW` is `on`, deploy to the server |
-| `pubkit.json`, `deploy` | Everything else the deployment needs, which the deploy walk checks and makes (below) |
+| `pubrules.json`, `deploy` | Everything else the deployment needs, which the deploy walk checks and makes (below) |
 
 ## What it shows, and where that comes from
 
@@ -43,15 +43,15 @@ team sign-in, as it is inside IAP today.
 ## Deploying
 
 `.github/workflows/deploy.yml` builds the image on each merge to main, once CI has passed, and
-applies `k8s/` to namespace `review` with pubkit's `k8s-deploy.yml`, once `DEPLOY_REVIEW` is `on`.
+applies `k8s/` to namespace `review` with pubrules's `k8s-deploy.yml`, once `DEPLOY_REVIEW` is `on`.
 
-pubkit.json's `deploy` block lists everything else the deployment needs, and pubkit's deploy walk
+pubrules.json's `deploy` block lists everything else the deployment needs, and pubrules's deploy walk
 checks each need and makes what it can. To take the site live, or bring it back in step, from a
 checkout of this repository with Sustenaut/shared-infra and Sustenaut/auth checked out beside it,
 on a machine on the admin tailnet, signed in to `gh` and `gcloud`:
 
 ```sh
-./with-secrets ./pubdeploy walk --fulfil --server sustenaut --zones ../shared-infra/pubkit.json
+./with-secrets ./pubdeploy walk --fulfil --server sustenaut --zones ../shared-infra/pubrules.json
 ```
 
 It checks every need, prints the plan, and waits for a typed `yes`; then it makes each missing
@@ -68,7 +68,7 @@ again: what is ready is left alone. In order:
 | the Secret `review-cookie` | made from it; oauth2-proxy restarted |
 | `auth.sign-in-client` | sustenaut.eu's team-site client in the team realm, role `review`: the approval record written into shared-infra's `infra/auth-approvals.json` when auth.sustenaut.eu wants one, and once the client is issued, the Secret `review-oidc` made from it on the server |
 | `k8s.manifests` | `k8s/admin/network-policy.yaml` applied: only oauth2-proxy's pods may reach the app |
-| the deploy settings | the server's variables and secrets in pubkit.json's `"secrets"` on this repository, checked |
+| the deploy settings | the server's variables and secrets in pubrules.json's `"secrets"` on this repository, checked |
 | `DEPLOY_REVIEW` and the rollout | the gate on, once everything before it is ready, and `deploy.yml` run and waited for |
 | `service.health` | `https://review.sustenaut.eu/healthz` answers |
 
@@ -99,4 +99,4 @@ DNS record and the `auth_team` output) and in Sustenaut/business-plan's `infra/`
 `sustenaut-review-site`, the buckets and Firestore); and the team realm, with everyone who may use
 the site holding the role `review`. The package `ghcr.io/sustenaut/review` is **public** and holds
 no data, so the cluster pulls it without a secret; give this repository write access under *Manage
-Actions access*. Branch protection is `./pubkit protect Sustenaut/review-site`.
+Actions access*. Branch protection is `./pubrules protect Sustenaut/review-site`.

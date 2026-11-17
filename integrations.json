@@ -48,7 +48,7 @@
     {
       "plugin": "tailscale.tailnet",
       "paths": [
-        "pubkit.json"
+        "pubrules.json"
       ],
       "mode": "required"
     }

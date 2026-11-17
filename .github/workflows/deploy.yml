@@ -1,5 +1,5 @@
 # Build and deploy the review service (review.sustenaut.eu) once CI passes on a merge to main,
-# or by hand, with pubkit's k8s-deploy.yml (pubkit's README, "Deploying a service to k3s"). The
+# or by hand, with pubrules's k8s-deploy.yml (pubrules's README, "Deploying a service to k3s"). The
 # image goes to GitHub's container registry as ghcr.io/sustenaut/review, public (not
 # ghcr.io/sustenaut/review-site: that is Sustenaut/business-plan's old package, private, whose
 # images hold the data), and holds Sustenaut/review-tooling's
@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   deploy:
-    uses: Sustenaut/pubdeploy/.github/workflows/k8s-deploy.yml@4d44dcdf46f86da3ed459d2ee34afc72ebe6ddb1 # v0.4.4
+    uses: Sustenaut/pubdeploy/.github/workflows/k8s-deploy.yml@fc34f05c790732a1ea831d896e557e9f816cba50 # v0.5.0
     with:
       image: ghcr.io/sustenaut/review
       deploys: |
