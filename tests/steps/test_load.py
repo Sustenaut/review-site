@@ -4,12 +4,13 @@ from __future__ import annotations
 import gzip
 import io
 import json
+import shutil
 import sys
 import tarfile
 from pathlib import Path
 
 import pytest
-from pytest_bdd import parsers, scenarios, then, when
+from pytest_bdd import given, parsers, scenarios, then, when
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import load  # noqa: E402
@@ -18,6 +19,9 @@ scenarios("load.feature")
 
 TOKEN = "pod-token"
 SRC = "https://storage.sustenaut.eu/sources/f/"
+URLS = {"none": None, "in the sources tenant": SRC + "x/e.cbor",
+        "on another host": "https://elsewhere.example/sources/f/x/e.cbor",
+        "in the publications tenant": "https://storage.sustenaut.eu/publications/f/x/e.cbor"}
 
 
 def tarball(files: dict[str, bytes]) -> bytes:
@@ -30,73 +34,75 @@ def tarball(files: dict[str, bytes]) -> bytes:
     return gzip.compress(raw.getvalue())
 
 
-def storage(answers: dict[str, bytes], asked: list[str]):
+@pytest.fixture
+def storage():
+    """What storage holds, by URL, and the URLs it was asked for, in turn."""
+    return {"answers": {}, "asked": []}
+
+
+def fetch_from(storage):
     def fetch(url: str, token: str) -> bytes:
         assert token == TOKEN
-        asked.append(url)
-        return answers[url]
+        storage["asked"].append(url)
+        return storage["answers"][url]
     return fetch
 
 
-@then("it loads both heads into one directory and bundles it")
-def it_loads_both_heads_into_one_directory_and_bundles_it(tmp_path):
-    asked: list[str] = []
-    answers = {
-        load.PUBLICATION: tarball({"objects/a.cbor": b"A", "objects/b.cbor": b"B", "README": b"x"}),
-        load.GATHERED: json.dumps({"objects": {"e.cbor": SRC + "1" * 64 + "/e.cbor"}}).encode(),
-        SRC + "1" * 64 + "/e.cbor": b"E",
-    }
-    seen = {}
-
-    def bundle(objects: Path, out: Path) -> None:
-        seen.update({p.name: p.read_bytes() for p in objects.iterdir()})
-        seen["out"] = out
-
-    out = tmp_path / "bundles"
-    assert load.load(out, TOKEN, storage(answers, asked), bundle) == (2, 1)
-    assert seen == {"a.cbor": b"A", "b.cbor": b"B", "e.cbor": b"E", "out": out}
-    assert asked[:2] == [load.PUBLICATION, load.GATHERED]
+@given("publication 0's tarball holding:")
+def publication(storage, datatable):
+    storage["answers"][load.PUBLICATION] = tarball({name: data.encode() for name, data in datatable[1:]})
 
 
-@then("a tarball entry outside objects is left out")
-def a_tarball_entry_outside_objects_is_left_out(tmp_path):
-    data = tarball({"objects/a.cbor": b"A", "../evil.cbor": b"X", "objects/sub/c.cbor": b"C"})
-    assert load.objects(data, tmp_path) == 1
-    assert [p.name for p in tmp_path.iterdir()] == ["a.cbor"]
+@given(parsers.parse('the sources index naming "{name}" in the sources tenant, holding "{data}"'))
+def sources_index(storage, name, data):
+    url = SRC + "1" * 64 + "/" + name
+    storage["answers"][load.GATHERED] = json.dumps({"objects": {name: url}}).encode()
+    storage["answers"][url] = data.encode()
 
 
-@then("an empty publication stops the pod")
-def an_empty_publication_stops_the_pod(tmp_path):
-    answers = {load.PUBLICATION: tarball({}), load.GATHERED: b"{}"}
-    with pytest.raises(load.LoadError, match="no objects"):
-        load.load(tmp_path / "b", TOKEN, storage(answers, []), lambda *_: None)
+@given("an empty sources index")
+def empty_sources_index(storage):
+    storage["answers"][load.GATHERED] = b"{}"
 
 
-URLS = {"none": None, "in the sources tenant": SRC + "x/e.cbor",
-        "on another host": "https://elsewhere.example/sources/f/x/e.cbor",
-        "in the publications tenant": "https://storage.sustenaut.eu/publications/f/x/e.cbor"}
+def bundle(objects: Path, out: Path) -> None:
+    """In pub bundle's place: the bundles are the objects it was given."""
+    shutil.copytree(objects, out)
 
 
-@when(parsers.parse('the index names "{name}" at the URL {where}'), target_fixture="refused")
-def index_names(tmp_path, name, where):
-    with pytest.raises(load.LoadError) as refused:
-        load.extracts({"objects": {name: URLS[where]}}, TOKEN, tmp_path, storage({}, []))
-    return refused.value
+@when(parsers.parse('the load bundles into "{out}"'))
+def bundles_into(ctx, storage, out):
+    def run():
+        published, cited = load.load(ctx.directory / out, TOKEN, fetch_from(storage), bundle)
+        return {"published": published, "cited": cited}
+    ctx.attempt(run)
 
 
-@then(parsers.parse('the load refuses it as "{why}"'))
-def load_refuses(refused, why):
-    assert why in str(refused)
+@when(parsers.parse('the load takes the tarball\'s objects into "{into}"'))
+def takes_objects(ctx, storage, into):
+    (ctx.directory / into).mkdir()
+    ctx.attempt(lambda: load.objects(storage["answers"][load.PUBLICATION], ctx.directory / into))
 
 
-@then("the token goes only to storage")
-def the_token_goes_only_to_storage():
-    with pytest.raises(load.LoadError, match="goes nowhere else"):
-        load.get("https://elsewhere.example/x", TOKEN, opener=lambda *a, **k: pytest.fail("fetched"))
+@when(parsers.parse('the load fetches "{url}"'))
+def fetches(ctx, url):
+    ctx.attempt(lambda: load.get(url, TOKEN, opener=lambda *a, **k: pytest.fail("fetched")))
 
 
-@then("without a token it says where it looked")
-def without_a_token_it_says_where_it_looked(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(load, "TOKEN", tmp_path / "missing")
-    assert load.main() == 1
-    assert "no storage token at" in capsys.readouterr().err
+@when(parsers.parse('the index names "{name}" at the URL {where}'))
+def index_names(ctx, storage, name, where):
+    ctx.attempt(lambda: load.extracts({"objects": {name: URLS[where]}}, TOKEN, ctx.directory, fetch_from(storage)))
+
+
+@then(parsers.parse('storage was asked first for "{first}", then for "{second}"'))
+def asked_in_turn(storage, first, second):
+    assert storage["asked"][:2] == [f"{load.STORAGE}/{first}", f"{load.STORAGE}/{second}"], storage["asked"]
+
+
+@then(parsers.parse('the refusal is a "{kind}"'))
+def refusal_is(ctx, kind):
+    """The refusal is of the class named, or of one made from it, by its name or
+    its module's dotted name."""
+    assert ctx.refused is not None, f"it was not refused: the result is {ctx.result!r}"
+    kinds = type(ctx.refused.error).__mro__
+    assert any(kind in (k.__name__, f"{k.__module__}.{k.__qualname__}") for k in kinds), repr(ctx.refused.error)
