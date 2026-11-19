@@ -9,32 +9,37 @@ import json
 from pathlib import Path
 
 import yaml
-from pytest_bdd import scenarios, then
+from pytest_bdd import scenarios, when
 
 scenarios("google-credential.feature")
 
 ROOT = Path(__file__).resolve().parents[2]
-PROVIDER = ("//iam.googleapis.com/projects/948171295184/locations/global/workloadIdentityPools/services/"
-            "providers/sustenaut-k3s")
 
 
-@then("the token the credential and the provider name one audience")
-def the_token_the_credential_and_the_provider_name_one_audience():
+def mounted() -> dict:
+    """What google-auth finds in the app's pod: the credential, the projected
+    token it points at, and the variable that names the credential."""
     configmap = yaml.safe_load((ROOT / "k8s" / "google-credential.yaml").read_text(encoding="utf-8"))
     credential = json.loads(configmap["data"]["credential.json"])
-    assert credential["type"] == "external_account" and credential["audience"] == PROVIDER
-    assert credential["service_account_impersonation_url"].endswith(
-        "/sustenaut-review-site@sustenaut.iam.gserviceaccount.com:generateAccessToken")
     app = next(d for d in yaml.safe_load_all((ROOT / "k8s" / "app.yaml").read_text(encoding="utf-8"))
                if d and d["kind"] == "Deployment")
     spec = app["spec"]["template"]["spec"]
-    assert spec["serviceAccountName"] == "app" and spec["automountServiceAccountToken"] is False
     (volume,) = [v for v in spec["volumes"] if v["name"] == "google-token"]
     (source,) = volume["projected"]["sources"]
-    assert source["serviceAccountToken"]["audience"] == PROVIDER
     container = next(c for c in spec["containers"] if c["name"] == "app")
     mounts = {m["name"]: m["mountPath"] for m in container["volumeMounts"]}
-    assert f"{mounts['google-token']}/{source['serviceAccountToken']['path']}" == credential["credential_source"]["file"]
     env = {e["name"]: e.get("value") for e in container["env"]}
-    assert env["GOOGLE_APPLICATION_CREDENTIALS"] == f"{mounts['google-credential']}/credential.json"
+    return {
+        "credential": credential,
+        "service account": spec["serviceAccountName"],
+        "automount": spec["automountServiceAccountToken"],
+        "token audience": source["serviceAccountToken"]["audience"],
+        "token file": f"{mounts['google-token']}/{source['serviceAccountToken']['path']}",
+        "credential file": f"{mounts['google-credential']}/credential.json",
+        "GOOGLE_APPLICATION_CREDENTIALS": env["GOOGLE_APPLICATION_CREDENTIALS"],
+    }
 
+
+@when("google-auth reads the credential the app's pod mounts")
+def reads_the_credential(ctx):
+    ctx.attempt(mounted)

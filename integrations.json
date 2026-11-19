@@ -10,7 +10,8 @@
     {
       "plugin": "github.actions-oidc",
       "paths": [
-        ".github/workflows/deploy-check.yml"
+        ".github/workflows/deploy-check.yml",
+        ".github/workflows/service-needs.yml"
       ],
       "mode": "required"
     },
